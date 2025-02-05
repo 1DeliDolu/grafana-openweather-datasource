@@ -9,6 +9,7 @@ datasources:
     version: 1
     editable: true
     jsonData:
-      path: '/resources'
+      path: 'forecast'
+      url: 'https://api.openweathermap.org/data/2.5'
     secureJsonData:
       apiKey: 'api-key'

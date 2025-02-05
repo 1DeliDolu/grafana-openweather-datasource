@@ -59,7 +59,8 @@ export interface WeatherData {
  * These are options configured for each DataSource instance
  */
 export interface MyDataSourceOptions extends DataSourceJsonData {
-  apiKey?: string;
+  path?: string;
+  url?: string;
 }
 
 /**

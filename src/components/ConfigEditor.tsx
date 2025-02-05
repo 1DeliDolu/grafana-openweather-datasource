@@ -1,5 +1,5 @@
 import React, { ChangeEvent } from 'react';
-import { InlineField, SecretInput } from '@grafana/ui';
+import { InlineField, SecretInput , Input} from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import { MyDataSourceOptions, MySecureJsonData } from '../types';
 
@@ -7,7 +7,7 @@ interface Props extends DataSourcePluginOptionsEditorProps<MyDataSourceOptions, 
 
 export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
-  const { secureJsonFields, secureJsonData } = options;
+  const { secureJsonFields, secureJsonData, jsonData } = options;
 
 
   // Secure field (only sent to the backend)
@@ -34,6 +34,17 @@ export function ConfigEditor(props: Props) {
     });
   };
 
+  // Regular field (sent to the frontend) für url
+  const onURLChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...jsonData,
+        url: event.target.value,
+      },
+    });
+  };
+
   return (
     <>
     
@@ -47,6 +58,16 @@ export function ConfigEditor(props: Props) {
           width={40}
           onReset={onResetAPIKey}
           onChange={onAPIKeyChange}
+        />
+      </InlineField>
+      <InlineField label="URL" labelWidth={14} tooltip={'URL to the weather API'}>
+        <Input
+          required
+          id="config-editor-url"
+          value={jsonData.url || ''}
+          placeholder="Enter the URL"
+          width={40}
+          onChange={onURLChange}
         />
       </InlineField>
     </>
