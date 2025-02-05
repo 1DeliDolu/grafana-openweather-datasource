@@ -22,3 +22,4 @@ services:
       GF_LOG_FILTERS: plugin.prtg-prtg-datasource:debug
       GF_LOG_LEVEL: debug
       GF_PATHS_PLUGINS: /var/lib/grafana/plugins
+

@@ -9,3 +9,6 @@ services:
       args:
         grafana_version: ${GRAFANA_VERSION:-9.1.2}
         grafana_image: ${GRAFANA_IMAGE:-grafana}
+    
+    environment:
+      - GRAFANA_ACCESS_POLICY_TOKEN=${GRAFANA_ACCESS_POLICY_TOKEN}
