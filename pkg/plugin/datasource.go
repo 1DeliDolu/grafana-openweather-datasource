@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/1DeliDolu/grafana-openweather-datasource.git"
+	"github.com/1DeliDolu/grafana-openweather-datasource/pkg/models" /* meine repository */
 )
 
 // Make sure Datasource implements required interfaces. This is important to do

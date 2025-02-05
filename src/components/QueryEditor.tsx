@@ -2,7 +2,7 @@ import React from 'react';
 import { InlineField, Stack, Select } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { DataSource } from '../datasource';
-import { MyDataSourceOptions, MyQuery, DEFAULT_QUERY } from '../types';
+import { MyDataSourceOptions, MyQuery } from '../types';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
@@ -60,7 +60,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     
     // Ana parametre değiştiğinde, alt parametreyi varsayılan değere ayarla
     const mainParam = value.value as MyQuery['mainParameter'];
-    const defaultSubParam = subParameterOptions[mainParam][0].value;
+    const defaultSubParam = subParameterOptions[mainParam][0].value as string;
     
     onChange({
       ...query,

@@ -1,4 +1,4 @@
-module github.com/grafana/openweather
+module github.com/1DeliDolu/grafana-openweather-datasource
 
 go 1.22.7
 
