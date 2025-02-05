@@ -10,7 +10,7 @@ export interface MyQuery extends DataQuery {
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {
-  city: '',
+  city: 'Marburg',
   mainParameter: 'main',
   subParameter: 'temp',
   units: 'metric',
@@ -59,7 +59,6 @@ export interface WeatherData {
  * These are options configured for each DataSource instance
  */
 export interface MyDataSourceOptions extends DataSourceJsonData {
-  path?: string;
   url?: string;
 }
 

@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/1DeliDolu/grafana-openweather-datasource/pkg/models" /* meine repository */
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/1DeliDolu/grafana-openweather-datasource/pkg/models" /* meine repository */
 )
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -25,18 +25,27 @@ var (
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
-const (
-	baseURL = "http://api.openweathermap.org/data/2.5/forecast"
-)
-
-// NewDatasource creates a new datasource instance.
-func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	return &Datasource{}, nil
+// Datasource struct with baseURL
+type Datasource struct {
+	baseURL string
 }
 
-// Datasource is an example datasource which can respond to data queries, reports
-// its health and has streaming skills.
-type Datasource struct{}
+// NewDatasource creates a new datasource instance.
+func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	config, err := models.LoadPluginSettings(settings)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use config.BaseURL or fall back to default if not set
+	baseURL := config.BaseURL
+
+
+
+	return &Datasource{
+		baseURL: baseURL,
+	}, nil
+}
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
 // created. As soon as datasource settings change detected by SDK old datasource instance will
@@ -111,10 +120,10 @@ type queryModel struct {
 }
 
 func (d *Datasource) GetHistoricalWeather(city string, apiKey string, qm queryModel) ([]WeatherData, error) {
-    endDate := time.Now()
-    startDate := endDate.AddDate(0, 0, -5)
+	endDate := time.Now()
+	startDate := endDate.AddDate(0, 0, -5)
 
-	url := fmt.Sprintf("%s?q=%s&appid=%s&units=metric&start=%d&end=%d", baseURL, city, apiKey, startDate.Unix(), endDate.Unix())
+	url := fmt.Sprintf("%s?q=%s&appid=%s&units=metric&start=%d&end=%d", d.baseURL, city, apiKey, startDate.Unix(), endDate.Unix())
 
 	resp, err := http.Get(url)
 	if (err != nil) {
@@ -137,152 +146,152 @@ func (d *Datasource) GetHistoricalWeather(city string, apiKey string, qm queryMo
 		return nil, err
 	}
 
-   weatherData := make([]WeatherData, len(weatherResponse.List))
-   for i, forecast := range weatherResponse.List {
-      var value float64
-      
-      switch qm.MainParameter {
-      case "main":
-         switch qm.SubParameter {
-         case "temp":
-            value = forecast.Main.Temp
-         case "feels_like":
-            value = forecast.Main.FeelsLike
-         case "temp_min":
-            value = forecast.Main.TempMin
-         case "temp_max":
-            value = forecast.Main.TempMax
-         case "pressure":
-            value = float64(forecast.Main.Pressure)
-         case "humidity":
-            value = float64(forecast.Main.Humidity)
-         }
-      case "wind":
-         switch qm.SubParameter {
-         case "speed":
-            value = forecast.Wind.Speed
-         case "deg":
-            value = forecast.Wind.Deg
-         case "gust":
-            value = forecast.Wind.Gust
-         }
-      case "clouds":
-         value = float64(forecast.Clouds.All)
-      case "rain":
-         value = forecast.Rain.ThreeHour
-      }
+	weatherData := make([]WeatherData, len(weatherResponse.List))
+	for i, forecast := range weatherResponse.List {
+		var value float64
 
-      weatherData[i] = WeatherData{
-         Time:        time.Unix(forecast.Dt, 0),
-         Temperature: value,
-         Description: forecast.Weather[0].Description,
-      }
-   }
+		switch qm.MainParameter {
+		case "main":
+			switch qm.SubParameter {
+			case "temp":
+				value = forecast.Main.Temp
+			case "feels_like":
+				value = forecast.Main.FeelsLike
+			case "temp_min":
+				value = forecast.Main.TempMin
+			case "temp_max":
+				value = forecast.Main.TempMax
+			case "pressure":
+				value = float64(forecast.Main.Pressure)
+			case "humidity":
+				value = float64(forecast.Main.Humidity)
+			}
+		case "wind":
+			switch qm.SubParameter {
+			case "speed":
+				value = forecast.Wind.Speed
+			case "deg":
+				value = forecast.Wind.Deg
+			case "gust":
+				value = forecast.Wind.Gust
+			}
+		case "clouds":
+			value = float64(forecast.Clouds.All)
+		case "rain":
+			value = forecast.Rain.ThreeHour
+		}
+
+		weatherData[i] = WeatherData{
+			Time:        time.Unix(forecast.Dt, 0),
+			Temperature: value,
+			Description: forecast.Weather[0].Description,
+		}
+	}
 
 	return weatherData, nil
 }
 
 func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
-    var response backend.DataResponse
-    var qm queryModel
+	var response backend.DataResponse
+	var qm queryModel
 
-    err := json.Unmarshal(query.JSON, &qm)
-    if err != nil {
-        return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
-    }
+	err := json.Unmarshal(query.JSON, &qm)
+	if (err != nil) {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+	}
 
-    // City boş ise işlemi durdur
-    if qm.City == "" {
-        return response
-    }
+	// City boş ise işlemi durdur
+	if (qm.City == "") {
+		return response
+	}
 
 	config, err := models.LoadPluginSettings(*pCtx.DataSourceInstanceSettings)
-	if err != nil {
+	if (err != nil) {
 		response.Error = err
 		return response
 	}
 
-	url := fmt.Sprintf("%s?q=%s&appid=%s&units=%s", baseURL, qm.City, config.Secrets.ApiKey, qm.Units)
+	url := fmt.Sprintf("%s?q=%s&appid=%s&units=%s", d.baseURL, qm.City, config.Secrets.ApiKey, qm.Units)
 
-    resp, err := http.Get(url)
-    if err != nil {
-        response.Error = err
-        return response
-    }
-    defer resp.Body.Close()
+	resp, err := http.Get(url)
+	if (err != nil) {
+		response.Error = err
+		return response
+	}
+	defer resp.Body.Close()
 
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-        response.Error = err
-        return response
-    }
+	body, err := io.ReadAll(resp.Body)
+	if (err != nil) {
+		response.Error = err
+		return response
+	}
 
-    if resp.StatusCode != http.StatusOK {
-        response.Error = fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-        return response
-    }
+	if (resp.StatusCode != http.StatusOK) {
+		response.Error = fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
+		return response
+	}
 
-    var weatherResponse WeatherResponse
-    err = json.Unmarshal(body, &weatherResponse)
-    if err != nil {
-        response.Error = err
-        return response
-    }
+	var weatherResponse WeatherResponse
+	err = json.Unmarshal(body, &weatherResponse)
+	if (err != nil) {
+		response.Error = err
+		return response
+	}
 
-    frame := data.NewFrame("response")
+	frame := data.NewFrame("response")
 
-    // Extract the requested parameter values based on mainParameter and subParameter
-    times := make([]time.Time, len(weatherResponse.List))
-    values := make([]float64, len(weatherResponse.List))
+	// Extract the requested parameter values based on mainParameter and subParameter
+	times := make([]time.Time, len(weatherResponse.List))
+	values := make([]float64, len(weatherResponse.List))
 
-    for i, item := range weatherResponse.List {
-        times[i] = time.Unix(item.Dt, 0)
-        
-        // Select the value based on the query parameters
-        switch qm.MainParameter {
-        case "main":
-            switch qm.SubParameter {
-            case "temp":
-                values[i] = item.Main.Temp
-            case "feels_like":
-                values[i] = item.Main.FeelsLike
-            case "temp_min":
-                values[i] = item.Main.TempMin
-            case "temp_max":
-                values[i] = item.Main.TempMax
-            case "pressure":
-                values[i] = float64(item.Main.Pressure)
-            case "humidity":
-                values[i] = float64(item.Main.Humidity)
-            }
-        case "wind":
-            switch qm.SubParameter {
-            case "speed":
-                values[i] = item.Wind.Speed
-            case "deg":
-                values[i] = item.Wind.Deg
-            case "gust":
-                values[i] = item.Wind.Gust
-            }
-        case "clouds":
-            values[i] = float64(item.Clouds.All)
-        case "rain":
-            values[i] = item.Rain.ThreeHour
-        }
-    }
+	for i, item := range weatherResponse.List {
+		times[i] = time.Unix(item.Dt, 0)
 
-    // Frame oluştururken etiketleri düzgün ayarla
-    frame.Fields = append(frame.Fields,
-        data.NewField("time", nil, times).SetConfig(&data.FieldConfig{
-            DisplayName: "Time",
-        }),
-        data.NewField("value", nil, values).SetConfig(&data.FieldConfig{
-            DisplayName: fmt.Sprintf("%s - %s", qm.MainParameter, qm.SubParameter),
-        }),
-    )
+		// Select the value based on the query parameters
+		switch qm.MainParameter {
+		case "main":
+			switch qm.SubParameter {
+			case "temp":
+				values[i] = item.Main.Temp
+			case "feels_like":
+				values[i] = item.Main.FeelsLike
+			case "temp_min":
+				values[i] = item.Main.TempMin
+			case "temp_max":
+				values[i] = item.Main.TempMax
+			case "pressure":
+				values[i] = float64(item.Main.Pressure)
+			case "humidity":
+				values[i] = float64(item.Main.Humidity)
+			}
+		case "wind":
+			switch qm.SubParameter {
+			case "speed":
+				values[i] = item.Wind.Speed
+			case "deg":
+				values[i] = item.Wind.Deg
+			case "gust":
+				values[i] = item.Wind.Gust
+			}
+		case "clouds":
+			values[i] = float64(item.Clouds.All)
+		case "rain":
+			values[i] = item.Rain.ThreeHour
+		}
+	}
 
-    response.Frames = append(response.Frames, frame)
-    return response
+	// Frame oluştururken etiketleri düzgün ayarla
+	frame.Fields = append(frame.Fields,
+		data.NewField("time", nil, times).SetConfig(&data.FieldConfig{
+			DisplayName: "Time",
+		}),
+		data.NewField("value", nil, values).SetConfig(&data.FieldConfig{
+			DisplayName: fmt.Sprintf("%s - %s", qm.MainParameter, qm.SubParameter),
+		}),
+	)
+
+	response.Frames = append(response.Frames, frame)
+	return response
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
