@@ -10,7 +10,6 @@ import (
 type PluginSettings struct {
 	Path    string                `json:"path"`
 	Secrets *SecretPluginSettings `json:"-"`
-	BaseURL string                `json:"baseURL"`
 }
 
 type SecretPluginSettings struct {
