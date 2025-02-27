@@ -1,3 +1,5 @@
 75a856b817655e7d502df5b41ed8c92e
 
 cd /mnt/d/Praxis/open-weather-datasource
+
+cd /mnt/d/APP/Prtg/grafana-openweather-datasource

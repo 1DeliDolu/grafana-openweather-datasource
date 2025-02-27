@@ -11,7 +11,11 @@ import (
 	"github.com/1DeliDolu/grafana-openweather-datasource/pkg/models" /* meine repository */
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/tracing"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -25,9 +29,10 @@ var (
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
-// Datasource struct with baseURL
+// Datasource struct with baseURL and logger
 type Datasource struct {
 	baseURL string
+	logger  log.Logger
 }
 
 // NewDatasource creates a new datasource instance.
@@ -38,12 +43,17 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 	}
 
 	// Use config.BaseURL or fall back to default if not set
-	
-if config.Path == "" {
+	if config.Path == "" {
 		config.Path = "https://api.openweathermap.org/data/2.5/forecast"
 	}
+
+	logger := log.New().With("datasource", settings.Name)
+
+	logger.Info("Creating new datasource instance", "baseURL", config.Path)
+
 	return &Datasource{
-		baseURL: config.Path ,
+		baseURL: config.Path,
+		logger:  logger,
 	}, nil
 }
 
@@ -51,6 +61,7 @@ if config.Path == "" {
 // created. As soon as datasource settings change detected by SDK old datasource instance will
 // be disposed and a new one will be created using NewSampleDatasource factory function.
 func (d *Datasource) Dispose() {
+	d.logger.Info("Disposing datasource instance")
 	// Clean up datasource instance resources.
 }
 
@@ -86,12 +97,6 @@ type WeatherResponse struct {
 	} `json:"list"`
 }
 
-type WeatherData struct {
-	Time        time.Time
-	Temperature float64
-	Description string
-}
-
 // QueryData handles multiple queries and returns multiple responses.
 // req contains the queries []DataQuery (where each query contains RefID as a unique identifier).
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
@@ -113,134 +118,141 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 }
 
 type queryModel struct {
+	RefID         string `json:"refId"`
 	City          string `json:"city"`
 	MainParameter string `json:"mainParameter"`
 	SubParameter  string `json:"subParameter"`
 	Units         string `json:"units"`
 }
 
-func (d *Datasource) GetHistoricalWeather(city string, apiKey string, qm queryModel) ([]WeatherData, error) {
+func (d *Datasource) GetHistoricalWeather(city string, apiKey string, qm queryModel) ([]WeatherResponse, error) {
 	endDate := time.Now()
 	startDate := endDate.AddDate(0, 0, -5)
 
 	url := fmt.Sprintf("%s?q=%s&appid=%s&units=metric&start=%d&end=%d", d.baseURL, city, apiKey, startDate.Unix(), endDate.Unix())
 
+	d.logger.Info("Fetching historical weather data", "url", url)
+
 	resp, err := http.Get(url)
-	if (err != nil) {
+	if err != nil {
+		d.logger.Error("Failed to fetch historical weather data", "error", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
-	if (err != nil) {
+	if err != nil {
+		d.logger.Error("Failed to read response body", "error", err)
 		return nil, err
 	}
 
-	if (resp.StatusCode != http.StatusOK) {
+	if resp.StatusCode != http.StatusOK {
+		d.logger.Error("API request failed", "statusCode", resp.StatusCode)
 		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
 	}
 
 	var weatherResponse WeatherResponse
 	err = json.Unmarshal(body, &weatherResponse)
-	if (err != nil) {
+	if err != nil {
+		d.logger.Error("Failed to unmarshal response body", "error", err)
 		return nil, err
 	}
 
-	weatherData := make([]WeatherData, len(weatherResponse.List))
+	weatherData := make([]WeatherResponse, len(weatherResponse.List))
 	for i, forecast := range weatherResponse.List {
-		var value float64
-
-		switch qm.MainParameter {
-		case "main":
-			switch qm.SubParameter {
-			case "temp":
-				value = forecast.Main.Temp
-			case "feels_like":
-				value = forecast.Main.FeelsLike
-			case "temp_min":
-				value = forecast.Main.TempMin
-			case "temp_max":
-				value = forecast.Main.TempMax
-			case "pressure":
-				value = float64(forecast.Main.Pressure)
-			case "humidity":
-				value = float64(forecast.Main.Humidity)
-			}
-		case "wind":
-			switch qm.SubParameter {
-			case "speed":
-				value = forecast.Wind.Speed
-			case "deg":
-				value = forecast.Wind.Deg
-			case "gust":
-				value = forecast.Wind.Gust
-			}
-		case "clouds":
-			value = float64(forecast.Clouds.All)
-		case "rain":
-			value = forecast.Rain.ThreeHour
-		}
-
-		weatherData[i] = WeatherData{
-			Time:        time.Unix(forecast.Dt, 0),
-			Temperature: value,
-			Description: forecast.Weather[0].Description,
-		}
+		weatherData[i] = weatherResponse
+		d.logger.Info("Weather data retrieved for timestamp", "dt", forecast.Dt)
 	}
 
 	return weatherData, nil
 }
 
-func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+	ctx, span := tracing.DefaultTracer().Start(
+		ctx,
+		"query processing",
+		trace.WithAttributes(
+			attribute.String("query.ref_id", query.RefID),
+			attribute.String("query.type", query.QueryType),
+			attribute.Int64("query.max_data_points", query.MaxDataPoints),
+			attribute.Int64("query.interval_ms", query.Interval.Milliseconds()),
+			attribute.Int64("query.time_range.from", query.TimeRange.From.Unix()),
+			attribute.Int64("query.time_range.to", query.TimeRange.To.Unix()),
+		),
+	)
+	defer span.End()
+
 	var response backend.DataResponse
 	var qm queryModel
 
 	err := json.Unmarshal(query.JSON, &qm)
-	if (err != nil) {
+	if err != nil {
+		d.logger.Error("Failed to unmarshal query JSON", "error", err)
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
 	// City boş ise işlemi durdur
-	if (qm.City == "") {
+	if qm.City == "" {
+		d.logger.Warn("City is empty in query")
 		return response
 	}
 
 	config, err := models.LoadPluginSettings(*pCtx.DataSourceInstanceSettings)
-	if (err != nil) {
+	if err != nil {
+		d.logger.Error("Failed to load plugin settings", "error", err)
 		response.Error = err
 		return response
 	}
 
 	url := fmt.Sprintf("%s?q=%s&appid=%s&units=%s", d.baseURL, qm.City, config.Secrets.ApiKey, qm.Units)
 
+	d.logger.Info("Fetching weather data", "url", url)
+
 	resp, err := http.Get(url)
-	if (err != nil) {
+	if err != nil {
+		d.logger.Error("Failed to fetch weather data", "error", err)
 		response.Error = err
 		return response
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
-	if (err != nil) {
+	if err != nil {
+		d.logger.Error("Failed to read response body", "error", err)
 		response.Error = err
 		return response
 	}
 
-	if (resp.StatusCode != http.StatusOK) {
+	if resp.StatusCode != http.StatusOK {
+		d.logger.Error("API request failed", "statusCode", resp.StatusCode)
 		response.Error = fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
 		return response
 	}
 
 	var weatherResponse WeatherResponse
 	err = json.Unmarshal(body, &weatherResponse)
-	if (err != nil) {
+	if err != nil {
+		d.logger.Error("Failed to unmarshal response body", "error", err)
 		response.Error = err
 		return response
 	}
 
-	frame := data.NewFrame("response")
+	// Add more detailed structured logging
+	logger := d.logger.FromContext(ctx)
+	logger.Info("Processing weather query",
+		"refId", qm.RefID,
+		"city", qm.City,
+		"mainParameter", qm.MainParameter,
+		"subParameter", qm.SubParameter,
+		"units", qm.Units)
 
-	// Extract the requested parameter values based on mainParameter and subParameter
+	// Create the frame with metadata immediately
+	frame := data.NewFrame("weather_data").
+		SetMeta(&data.FrameMeta{
+			Type: data.FrameTypeTimeSeriesMulti,
+		})
+
+	// Extract the requested parameter values
 	times := make([]time.Time, len(weatherResponse.List))
 	values := make([]float64, len(weatherResponse.List))
 
@@ -280,15 +292,35 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 		}
 	}
 
-	// Frame oluştururken etiketleri düzgün ayarla
+	// Add logging with frame details
+	logger.Info("Weather data processed",
+		"refId", qm.RefID,
+		"city", qm.City,
+		"mainParameter", qm.MainParameter,
+		"subParameter", qm.SubParameter,
+		"dataPoints", len(values),
+		"firstValue", fmt.Sprintf("%.2f", values[0]),
+		"lastValue", fmt.Sprintf("%.2f", values[len(values)-1]),
+		"frameLength", len(frame.Fields))
+
+	// Add fields to frame with labels
 	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, times).SetConfig(&data.FieldConfig{
-			DisplayName: "Time",
-		}),
-		data.NewField("value", nil, values).SetConfig(&data.FieldConfig{
-			DisplayName: fmt.Sprintf("%s - %s", qm.MainParameter, qm.SubParameter),
-		}),
-	)
+		data.NewField("time", map[string]string{
+			"city":         qm.City,
+			"parameter":    qm.MainParameter,
+			"subparameter": qm.SubParameter,
+		}, times),
+		data.NewField("value", map[string]string{
+			"city":         qm.City,
+			"parameter":    qm.MainParameter,
+			"subparameter": qm.SubParameter,
+		}, values))
+
+	// Debug log for frame details
+	logger.Debug("Frame details",
+		"frameName", frame.Name,
+		"fieldCount", len(frame.Fields),
+		"rowCount", frame.Fields[0].Len())
 
 	response.Frames = append(response.Frames, frame)
 	return response
@@ -302,18 +334,23 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 	res := &backend.CheckHealthResult{}
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 
-	if (err != nil) {
+	logger := d.logger.FromContext(context.Background())
+
+	if err != nil {
+		logger.Error("Failed to load settings", "error", err)
 		res.Status = backend.HealthStatusError
 		res.Message = "Unable to load settings"
 		return res, nil
 	}
 
-	if (config.Secrets.ApiKey == "") {
+	if config.Secrets.ApiKey == "" {
+		logger.Error("API key is missing")
 		res.Status = backend.HealthStatusError
 		res.Message = "API key is missing"
 		return res, nil
 	}
 
+	logger.Info("Health check successful")
 	return &backend.CheckHealthResult{
 		Status:  backend.HealthStatusOk,
 		Message: "Data source is working",
