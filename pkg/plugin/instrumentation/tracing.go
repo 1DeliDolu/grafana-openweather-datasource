@@ -5,6 +5,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 type TracingHelper struct {
@@ -12,6 +13,9 @@ type TracingHelper struct {
 }
 
 func NewTracingHelper(tracer trace.Tracer) *TracingHelper {
+	if tracer == nil {
+		tracer = noop.NewTracerProvider().Tracer("")
+	}
 	return &TracingHelper{
 		tracer: tracer,
 	}
@@ -24,10 +28,12 @@ func (t *TracingHelper) StartSpan(ctx context.Context, name string, attrs ...att
 
 // GetSpanContext retrieves the span context from the given context
 func (t *TracingHelper) GetSpanContext(ctx context.Context) trace.SpanContext {
-	return trace.SpanContextFromContext(ctx)
+	spanCtx := trace.SpanContextFromContext(ctx)
+	return spanCtx
 }
 
 // GetTraceID returns the trace ID from the given context
 func (t *TracingHelper) GetTraceID(ctx context.Context) trace.TraceID {
-	return trace.SpanContextFromContext(ctx).TraceID()
+	spanCtx := t.GetSpanContext(ctx)
+	return spanCtx.TraceID()
 }
