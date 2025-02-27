@@ -65,6 +65,9 @@ func NewMetrics(pluginID string) *Metrics {
 
 // RecordRequest records metrics for a request
 func (m *Metrics) RecordRequest(operation string, start time.Time, err error) {
+	m.requestsActive.Inc()
+	defer m.requestsActive.Dec()
+	
 	duration := time.Since(start).Seconds()
 	status := "success"
 	if err != nil {
