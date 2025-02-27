@@ -1,4 +1,4 @@
-import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
+import { DataSourceInstanceSettings, CoreApp, ScopedVars, AnnotationQuery, AnnotationSupport } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
@@ -23,4 +23,5 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     // if no query has been provided, prevent the query from being executed
     return !!query.queryText;
   }
+  annotations?: AnnotationSupport<MyQuery, AnnotationQuery<MyQuery>> | undefined;
 }
