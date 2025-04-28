@@ -1,4 +1,4 @@
-import { DataSourceInstanceSettings, CoreApp, ScopedVars, AnnotationQuery, AnnotationSupport } from '@grafana/data';
+import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
@@ -13,15 +13,28 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
+    // Make sure all parameters are sent to the backend
+    const city = getTemplateSrv().replace(query.city || '', scopedVars);
+    const mainParameter = query.mainParameter || 'main';
+    const subParameter = query.subParameter || 'temp';
+    const units = query.units || 'metric';
+
+    // Map the frontend parameters to backend expected format
     return {
       ...query,
-      queryText: getTemplateSrv().replace(query.queryText, scopedVars),
+      city: city,
+      mainParameter: mainParameter, 
+      subParameter: subParameter,
+      units: units,
+      queryText: city,
+      // Include these fields for backend compatibility
+      metric: mainParameter,
+      format: subParameter
     };
   }
 
   filterQuery(query: MyQuery): boolean {
-    // if no query has been provided, prevent the query from being executed
-    return !!query.queryText;
+    // Only execute the query if a city has been provided
+    return !!query.city;
   }
-  annotations?: AnnotationSupport<MyQuery, AnnotationQuery<MyQuery>> | undefined;
 }

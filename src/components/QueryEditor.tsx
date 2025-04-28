@@ -49,16 +49,15 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({
       ...query,
       city: cityName,
-      queryText: cityName, // Bu önemli, backend'e gönderilen query metni
+      queryText: cityName, // Important for backend query
     });
-    // Hemen çalıştır
     onRunQuery();
   };
 
   const onMainParameterChange = (value: SelectableValue<string>) => {
     if (!value.value) {return};
     
-    // Ana parametre değiştiğinde, alt parametreyi varsayılan değere ayarla
+    // When main parameter changes, set sub-parameter to default
     const mainParam = value.value as MyQuery['mainParameter'];
     const defaultSubParam = subParameterOptions[mainParam][0].value as string;
     
@@ -81,9 +80,25 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   };
 
   const onUnitsChange = (value: SelectableValue<string>) => {
-    onChange({ ...query, units: value.value as 'standard' | 'metric' | 'imperial' });
+    onChange({ 
+      ...query, 
+      units: value.value as 'standard' | 'metric' | 'imperial' 
+    });
     onRunQuery();
   };
+
+  // Make sure we have default values
+  const mainParameter = query.mainParameter || 'main';
+  const subParameter = query.subParameter || 
+    (subParameterOptions[mainParameter] && subParameterOptions[mainParameter][0].value) || 
+    'temp';
+  const units = query.units || 'metric';
+  
+  // Find the current selections to highlight them in dropdowns
+  const currentMainOption = mainParameterOptions.find(opt => opt.value === mainParameter);
+  const currentSubOptions = subParameterOptions[mainParameter] || subParameterOptions.main;
+  const currentSubOption = currentSubOptions.find(opt => opt.value === subParameter);
+  const currentUnitOption = unitsOptions.find(opt => opt.value === units);
 
   return (
     <Stack direction="column" gap={2}>
@@ -91,7 +106,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         <InlineField label="City Name" labelWidth={20} tooltip="Enter city name (e.g., London,uk)">
           <input
             type="text"
-            value={query.city || query.city || ''}
+            value={query.city || ''}
             onChange={onCityNameChange}
             placeholder="Enter city name (e.g., London,uk)"
             className="gf-form-input width-20"
@@ -103,7 +118,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         <InlineField label="Main Parameter" labelWidth={20} tooltip="Select main weather parameter">
           <Select
             options={mainParameterOptions}
-            value={mainParameterOptions.find(opt => opt.value === query.mainParameter)}
+            value={currentMainOption}
             onChange={onMainParameterChange}
             width={40}
           />
@@ -113,12 +128,8 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       <div>
         <InlineField label="Parameters" labelWidth={20} tooltip="Select weather parameter">
           <Select
-            options={subParameterOptions[query.mainParameter || 'main']}
-            value={{
-              label: subParameterOptions[query.mainParameter || 'main']
-                .find(opt => opt.value === query.subParameter)?.label || '',
-              value: query.subParameter || '',
-            }}
+            options={currentSubOptions}
+            value={currentSubOption}
             onChange={onSubParameterChange}
             isMulti={false}
             width={40}
@@ -130,7 +141,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         <InlineField label="Units" labelWidth={20} tooltip="Select measurement units">
           <Select
             options={unitsOptions}
-            value={query.units || 'metric'}
+            value={currentUnitOption}
             onChange={onUnitsChange}
             width={40}
           />
